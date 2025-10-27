@@ -1,213 +1,240 @@
-import { Timer } from "./modules/timer.js";
-import utils from "./utility.js";
+import {
+  getCountries,
+  getCities,
+  getPrayerTimes,
+  showError,
+} from "./utility.js";
 
-const countrySelection = document.getElementById("county");
-const citySelection = document.getElementById("city");
-const liveCountLabel = document.getElementById("liveCount");
+const continentSelect = document.getElementById("continent-select");
+const countrySelect = document.getElementById("country-select");
+const citySelect = document.getElementById("city-select");
+const methodSelect = document.getElementById("method-select");
+const prayerTableBody = document.querySelector("#prayer-table tbody");
+const resetBtn = document.getElementById("reset-btn");
+const countdownDiv = document.getElementById("nextPrayerCountDown");
 
-function resetSelectLabel(selection, message) {
-  selection.innerHTML = `
-    <option value="" id="cityDefaultValue" disabled selected>${message}</option>
-  `;
-}
-async function renderSelection({
-  selectedValue,
-  selectionLabel,
-  selection,
-  fetchingDataFn,
-}) {
-  if (!selectedValue)
-    resetSelectLabel(selection, `-- Select a ${selectionLabel} First --`);
+const fallbackCities = {
+  Palestine: ["Gaza", "Ramallah", "Nablus", "Hebron", "Jenin"],
+};
+
+// 🧭 Global variable to track live countdown
+let countdownInterval = null;
+
+// Restore last selection from localStorage
+window.addEventListener("DOMContentLoaded", async () => {
+  const lastContinent = localStorage.getItem("continent");
+  const lastCountry = localStorage.getItem("country");
+  const lastCity = localStorage.getItem("city");
+  const lastMethod = localStorage.getItem("method");
+
+  if (lastContinent) {
+    continentSelect.value = lastContinent;
+    await loadCountries(lastContinent);
+  }
+  if (lastCountry) {
+    countrySelect.value = lastCountry;
+    await loadCities(lastCountry);
+  }
+  if (lastCity) citySelect.value = lastCity;
+  if (lastMethod) methodSelect.value = lastMethod;
+
+  if (lastCountry && lastCity) {
+    loadPrayerTimes();
+    startPrayerCountdown(lastCountry, lastCity);
+  }
+});
+
+// 🌍 Load countries
+async function loadCountries(continent) {
+  countrySelect.innerHTML = "<option>Loading countries...</option>";
+  citySelect.innerHTML = '<option value="">Select City</option>';
+  prayerTableBody.innerHTML = "";
+
   try {
-    const data = await fetchingDataFn(selectedValue);
-    resetSelectLabel(selection, `-- ${selectionLabel} Name --`);
-
-    if (!Array.isArray(data) || data.length === 0) {
-      resetSelectLabel(selection, `No ${selectionLabel} `);
-      return;
-    }
-
-    data.forEach((item) => {
+    const countries = await getCountries(continent);
+    countrySelect.innerHTML = '<option value="">Select Country</option>';
+    countries.forEach((c) => {
       const option = document.createElement("option");
-      option.value = item;
-      option.textContent = item;
-      selection.append(option);
+      option.value = c;
+      option.textContent = c;
+      countrySelect.appendChild(option);
     });
   } catch (err) {
-    console.error(`Error loading ${selectionLabel}:`, err);
-    resetSelectLabel(selection, `Failed to load ${selectionLabel}`);
+    showError(err.message);
   }
 }
 
-renderSelection({
-  selectedValue: "africa",
-  selectionLabel: "Country",
-  selection: countrySelection,
-  fetchingDataFn: utils.getCountries,
-});
+// 🏙️ Load cities
+async function loadCities(country) {
+  citySelect.innerHTML = "<option>Loading cities...</option>";
+  prayerTableBody.innerHTML = "";
 
-const citiesCache = {};
-
-async function getCachedCities(country) {
-  if (citiesCache[country]) return citiesCache[country];
-  else {
-    const cities = await utils.getCities(country);
-    citiesCache[country] = cities;
-    return cities;
-  }
-}
-async function handleCountrySelection(e) {
-  const selectedCountry = e.target.value;
-  await renderSelection({
-    selectedValue: selectedCountry,
-    selectionLabel: "City",
-    fetchingDataFn: getCachedCities,
-    selection: citySelection,
-  });
-}
-
-let timer = new Timer(0, 0, 5, liveCountLabel, () => {
-  liveCountLabel.textContent = "HEEE";
-});
-timer.startTimer();
-
-countrySelection.addEventListener("change", handleCountrySelection);
-
-// // 3. Get prayer times for a city & country
-// async function getPrayerTimes(country, city) {
-//   const url = `https://api.aladhan.com/v1/timingsByCity?city=${city}&country=${country}&method=2`;
-//   const res = await fetch(url);
-//   const data = await res.json();
-//   return data.data.timings; // object with Fajr, Dhuhr, Asr, Maghrib, Isha, etc.
-// }
-// 1. Get countries by continent
-async function getCountries(continent) {
-  const res = await fetch(`https://restcountries.com/v3.1/region/${continent}`);
-  const data = await res.json();
-  return data.map((c) => c.name.common); // return array of country names
-}
-
-// 2. Get cities of a country
-async function getCities(country) {
-  const res = await fetch(
-    "https://countriesnow.space/api/v0.1/countries/cities",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ country }),
+  try {
+    let cities = await getCities(country);
+    if (!cities || cities.length === 0) {
+      if (fallbackCities[country]) cities = fallbackCities[country];
+      else {
+        showError("No cities available");
+        return;
+      }
     }
-  );
-  console.log(res);
-  const data = await res.json();
-  return data.data; // array of city names
+    citySelect.innerHTML = '<option value="">Select City</option>';
+    cities.forEach((c) => {
+      const option = document.createElement("option");
+      option.value = c;
+      option.textContent = c;
+      citySelect.appendChild(option);
+    });
+  } catch (err) {
+    if (fallbackCities[country]) {
+      citySelect.innerHTML = '<option value="">Select City</option>';
+      fallbackCities[country].forEach((c) => {
+        const option = document.createElement("option");
+        option.value = c;
+        option.textContent = c;
+        citySelect.appendChild(option);
+      });
+    } else {
+      showError(err.message);
+    }
+  }
 }
 
-// 3. Get prayer times for a city & country
-async function getPrayerTimes(country, city) {
-  const url = `https://api.aladhan.com/v1/timingsByCity?city=${city}&country=${country}&method=2`;
-  const res = await fetch(url);
-  const data = await res.json();
-  return data.data.timings; // object with Fajr, Dhuhr, Asr, Maghrib, Isha, etc.
+// 🕌 Load prayer times
+async function loadPrayerTimes() {
+  const country = countrySelect.value;
+  const city = citySelect.value;
+  const method = methodSelect.value;
+  if (!country || !city) return;
+
+  prayerTableBody.innerHTML =
+    '<tr><td colspan="2">Loading prayer times...</td></tr>';
+
+  try {
+    const prayers = await getPrayerTimes(country, city, method);
+    prayerTableBody.innerHTML = "";
+    for (const [name, time] of Object.entries(prayers)) {
+      const row = document.createElement("tr");
+      row.innerHTML = `<td>${name}</td><td>${time}</td>`;
+      prayerTableBody.appendChild(row);
+    }
+  } catch (err) {
+    showError(err.message);
+  }
 }
-async function getNextPrayerCountdown(country, city)
-{
+
+// 🕒 Countdown logic with interval protection
+async function getNextPrayerCountdown(country, city) {
   const prayerTimes = await getPrayerTimes(country, city);
-//  console.log(prayerTimes);
   const now = new Date();
   const prayers = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"];
+
   for (let prayer of prayers) {
-    const timeParts = prayerTimes[prayer].split(":");
+    const [h, m] = prayerTimes[prayer].split(":").map(Number);
     const prayerTime = new Date(
       now.getFullYear(),
       now.getMonth(),
       now.getDate(),
-      parseInt(timeParts[0]),
-      parseInt(timeParts[1])
+      h,
+      m
     );
     if (prayerTime > now) {
-      const diffMs = prayerTime - now;
-      const diffHrs = Math.floor(diffMs / 3600000); // hours
-      const diffMins = Math.floor((diffMs % 3600000) / 60000); // minutes
-      const difSecs = Math.floor((diffMs % 60000) / 1000); // seconds
-      return { prayer, hours: diffHrs, minutes: diffMins, seconds: difSecs, day : 'Today'};
+      const diff = prayerTime - now;
+      return {
+        prayer,
+        hours: Math.floor(diff / 3600000),
+        minutes: Math.floor((diff % 3600000) / 60000),
+        seconds: Math.floor((diff % 60000) / 1000),
+        day: "Today",
+      };
     }
   }
-  // tomorrowprayer
-  const timeParts = prayerTimes["Fajr"].split(":");
-  const prayerTime = new Date(
+
+  // next day Fajr
+  const [h, m] = prayerTimes["Fajr"].split(":").map(Number);
+  const tomorrow = new Date(
     now.getFullYear(),
     now.getMonth(),
     now.getDate() + 1,
-    parseInt(timeParts[0]),
-    parseInt(timeParts[1])
+    h,
+    m
   );
-  const diffMs = prayerTime - now;
-  const diffHrs = Math.floor(diffMs / 3600000); // hours
-  const diffMins = Math.floor((diffMs % 3600000) / 60000); // minutes
-  const difSecs = Math.floor((diffMs % 60000) / 1000); // seconds
-  return { prayer: "Fajr", hours: diffHrs, minutes: diffMins, seconds: difSecs, day : 'Tomorrow' };
+  const diff = tomorrow - now;
+  return {
+    prayer: "Fajr",
+    hours: Math.floor(diff / 3600000),
+    minutes: Math.floor((diff % 3600000) / 60000),
+    seconds: Math.floor((diff % 60000) / 1000),
+    day: "Tomorrow",
+  };
+}
 
-
-} 
-function formatTime(hours, minutes, seconds) {
-  const h = String(hours).padStart(2, "0");
-  const m = String(minutes).padStart(2, "0");
-  const s = String(seconds).padStart(2, "0");
-  return `${h}:${m}:${s}`;
+function formatTime(h, m, s) {
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(
+    s
+  ).padStart(2, "0")}`;
 }
 
 async function startPrayerCountdown(country, city) {
-  
-
-   
-  async function updateCountdown() {
-    const result = await getNextPrayerCountdown(country, city);
-    const timeStr = formatTime(result.hours, result.minutes, result.seconds);
-
-    
-    document.getElementById("nextPrayerCountDown").innerText =
-      `Next prayer in ${country} : ${result.prayer} (${result.day}) in ${timeStr}`;
-    
+  // 🧹 Clear any previous countdown before starting a new one
+  if (countdownInterval) {
+    clearInterval(countdownInterval);
+    countdownInterval = null;
   }
 
-  await updateCountdown();
-  setInterval(updateCountdown, 1000);
-
-
-}
-
-function displayPrayerTimes(prayerTimes) {
-
-
-  const prayers = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"];
-  let html = "<table border='1'><tr><th>Prayer</th><th>Time</th></tr>";
-  for (let prayer of prayers) {
-    html += `<tr><td>${prayer}</td><td>${prayerTimes[prayer]}</td></tr>`;
+  async function update() {
+    try {
+      const result = await getNextPrayerCountdown(country, city);
+      const timeStr = formatTime(result.hours, result.minutes, result.seconds);
+      countdownDiv.textContent = `Next prayer in ${city}: ${result.prayer} (${result.day}) in ${timeStr}`;
+    } catch (err) {
+      showError("Error updating countdown: " + err.message);
+    }
   }
-  html += "</table>";
-  document.getElementById("prayerTimeTable").innerHTML = html;  
-  
-  
+
+  await update();
+  countdownInterval = setInterval(update, 1000);
 }
 
+// ⚙️ Event handlers
+continentSelect.addEventListener("change", async () => {
+  localStorage.setItem("continent", continentSelect.value);
+  await loadCountries(continentSelect.value);
+  localStorage.removeItem("country");
+  localStorage.removeItem("city");
+});
 
+countrySelect.addEventListener("change", async () => {
+  localStorage.setItem("country", countrySelect.value);
+  await loadCities(countrySelect.value);
+  localStorage.removeItem("city");
+});
 
+citySelect.addEventListener("change", () => {
+  localStorage.setItem("city", citySelect.value);
+  loadPrayerTimes();
+  startPrayerCountdown(countrySelect.value, citySelect.value);
+});
 
+methodSelect.addEventListener("change", () => {
+  localStorage.setItem("method", methodSelect.value);
+  loadPrayerTimes();
+  startPrayerCountdown(countrySelect.value, citySelect.value);
+});
 
-// Example usage
-(async () => {
-    const countries = await getCountries("Asia");
-    console.log("Countries in Asia:", countries);
+// 🔁 Reset button
+resetBtn.addEventListener("click", () => {
+  continentSelect.value = "";
+  countrySelect.innerHTML = '<option value="">Select Country</option>';
+  citySelect.innerHTML = '<option value="">Select City</option>';
+  methodSelect.value = "2";
+  prayerTableBody.innerHTML = "";
+  countdownDiv.textContent = "";
 
-  //const cities = await getCities("Palestine");
-//  console.log("Cities in Palestine:", cities);
+  if (countdownInterval) {
+    clearInterval(countdownInterval);
+    countdownInterval = null;
+  }
 
-    const prayerTimes = await getPrayerTimes("Jordan", "Amman");
-    console.log("Prayer times in Amman:", prayerTimes);
-    const countdown = await getNextPrayerCountdown("Jordan", "Amman");
-    console.log("Next prayer countdown in Amman:", countdown);
-    startPrayerCountdown("Jordan", "Amman");
-    displayPrayerTimes(prayerTimes);
-
-})();
-
+  localStorage.clear();
+});
