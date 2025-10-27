@@ -1,31 +1,50 @@
-import {
-  getCountries,
-  getCities,
-  getPrayerTimes,
-  showError,
-} from "./utility.js";
+import { getCountries, getCities, getPrayerTimes, showError } from './utility.js';
 
-const continentSelect = document.getElementById("continent-select");
-const countrySelect = document.getElementById("country-select");
-const citySelect = document.getElementById("city-select");
-const methodSelect = document.getElementById("method-select");
-const prayerTableBody = document.querySelector("#prayer-table tbody");
-const resetBtn = document.getElementById("reset-btn");
-const countdownDiv = document.getElementById("nextPrayerCountDown");
+const continentSelect = document.getElementById('continent-select');
+const countrySelect = document.getElementById('country-select');
+const citySelect = document.getElementById('city-select');
+const methodSelect = document.getElementById('method-select');
+const prayerTableBody = document.querySelector('#prayer-table tbody');
+const resetBtn = document.getElementById('reset-btn');
+const countdownDiv = document.getElementById('nextPrayerCountDown');
 
-const fallbackCities = {
-  Palestine: ["Gaza", "Ramallah", "Nablus", "Hebron", "Jenin"],
-};
-
-// 🧭 Global variable to track live countdown
+// 🧭 Global interval tracker for countdown
 let countdownInterval = null;
 
-// Restore last selection from localStorage
-window.addEventListener("DOMContentLoaded", async () => {
-  const lastContinent = localStorage.getItem("continent");
-  const lastCountry = localStorage.getItem("country");
-  const lastCity = localStorage.getItem("city");
-  const lastMethod = localStorage.getItem("method");
+// 🇵🇸 Fallback list for Palestine cities
+const fallbackCities = {
+  "Palestine": [
+    "Gaza",
+    "Khan Yunis",
+    "Rafah",
+    "Deir al-Balah",
+    "Nuseirat",
+    "Beit Lahia",
+    "Beit Hanoun",
+    "Jerusalem",
+    "Hebron",
+    "Yatta",
+    "Dura",
+    "Halhul",
+    "Nablus",
+    "Jenin",
+    "Tulkarm",
+    "Qalqilya",
+    "Ramallah",
+    "Al-Bireh",
+    "Bethlehem",
+    "Dheisheh",
+    "Jericho",
+    "Salfit"
+  ]
+};
+
+// 🧩 Restore selections on load
+window.addEventListener('DOMContentLoaded', async () => {
+  const lastContinent = localStorage.getItem('continent');
+  const lastCountry   = localStorage.getItem('country');
+  const lastCity      = localStorage.getItem('city');
+  const lastMethod    = localStorage.getItem('method');
 
   if (lastContinent) {
     continentSelect.value = lastContinent;
@@ -39,22 +58,22 @@ window.addEventListener("DOMContentLoaded", async () => {
   if (lastMethod) methodSelect.value = lastMethod;
 
   if (lastCountry && lastCity) {
-    loadPrayerTimes();
+    await loadPrayerTimes();
     startPrayerCountdown(lastCountry, lastCity);
   }
 });
 
-// 🌍 Load countries
+// 🌍 Load countries by continent
 async function loadCountries(continent) {
-  countrySelect.innerHTML = "<option>Loading countries...</option>";
+  countrySelect.innerHTML = '<option>Loading countries...</option>';
   citySelect.innerHTML = '<option value="">Select City</option>';
-  prayerTableBody.innerHTML = "";
+  prayerTableBody.innerHTML = '';
 
   try {
     const countries = await getCountries(continent);
     countrySelect.innerHTML = '<option value="">Select Country</option>';
-    countries.forEach((c) => {
-      const option = document.createElement("option");
+    countries.forEach(c => {
+      const option = document.createElement('option');
       option.value = c;
       option.textContent = c;
       countrySelect.appendChild(option);
@@ -64,40 +83,37 @@ async function loadCountries(continent) {
   }
 }
 
-// 🏙️ Load cities
+// 🏙️ Load cities with Palestine fallback
 async function loadCities(country) {
-  citySelect.innerHTML = "<option>Loading cities...</option>";
-  prayerTableBody.innerHTML = "";
+  citySelect.innerHTML = '<option>Loading cities...</option>';
+  prayerTableBody.innerHTML = '';
 
   try {
     let cities = await getCities(country);
     if (!cities || cities.length === 0) {
       if (fallbackCities[country]) cities = fallbackCities[country];
-      else {
-        showError("No cities available");
-        return;
-      }
+      else { showError("No cities available"); return; }
     }
-    citySelect.innerHTML = '<option value="">Select City</option>';
-    cities.forEach((c) => {
-      const option = document.createElement("option");
-      option.value = c;
-      option.textContent = c;
-      citySelect.appendChild(option);
-    });
+    renderCities(cities);
   } catch (err) {
+    // If API fails, use fallback for Palestine
     if (fallbackCities[country]) {
-      citySelect.innerHTML = '<option value="">Select City</option>';
-      fallbackCities[country].forEach((c) => {
-        const option = document.createElement("option");
-        option.value = c;
-        option.textContent = c;
-        citySelect.appendChild(option);
-      });
+      renderCities(fallbackCities[country]);
     } else {
       showError(err.message);
     }
   }
+}
+
+// Helper to render cities in dropdown
+function renderCities(cities) {
+  citySelect.innerHTML = '<option value="">Select City</option>';
+  cities.forEach(c => {
+    const option = document.createElement('option');
+    option.value = c;
+    option.textContent = c;
+    citySelect.appendChild(option);
+  });
 }
 
 // 🕌 Load prayer times
@@ -107,14 +123,13 @@ async function loadPrayerTimes() {
   const method = methodSelect.value;
   if (!country || !city) return;
 
-  prayerTableBody.innerHTML =
-    '<tr><td colspan="2">Loading prayer times...</td></tr>';
+  prayerTableBody.innerHTML = '<tr><td colspan="2">Loading prayer times...</td></tr>';
 
   try {
     const prayers = await getPrayerTimes(country, city, method);
-    prayerTableBody.innerHTML = "";
+    prayerTableBody.innerHTML = '';
     for (const [name, time] of Object.entries(prayers)) {
-      const row = document.createElement("tr");
+      const row = document.createElement('tr');
       row.innerHTML = `<td>${name}</td><td>${time}</td>`;
       prayerTableBody.appendChild(row);
     }
@@ -123,7 +138,7 @@ async function loadPrayerTimes() {
   }
 }
 
-// 🕒 Countdown logic with interval protection
+// ⏰ Countdown logic
 async function getNextPrayerCountdown(country, city) {
   const prayerTimes = await getPrayerTimes(country, city);
   const now = new Date();
@@ -131,13 +146,7 @@ async function getNextPrayerCountdown(country, city) {
 
   for (let prayer of prayers) {
     const [h, m] = prayerTimes[prayer].split(":").map(Number);
-    const prayerTime = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      now.getDate(),
-      h,
-      m
-    );
+    const prayerTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m);
     if (prayerTime > now) {
       const diff = prayerTime - now;
       return {
@@ -145,38 +154,28 @@ async function getNextPrayerCountdown(country, city) {
         hours: Math.floor(diff / 3600000),
         minutes: Math.floor((diff % 3600000) / 60000),
         seconds: Math.floor((diff % 60000) / 1000),
-        day: "Today",
+        day: "Today"
       };
     }
   }
 
-  // next day Fajr
   const [h, m] = prayerTimes["Fajr"].split(":").map(Number);
-  const tomorrow = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate() + 1,
-    h,
-    m
-  );
+  const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, h, m);
   const diff = tomorrow - now;
   return {
     prayer: "Fajr",
     hours: Math.floor(diff / 3600000),
     minutes: Math.floor((diff % 3600000) / 60000),
     seconds: Math.floor((diff % 60000) / 1000),
-    day: "Tomorrow",
+    day: "Tomorrow"
   };
 }
 
 function formatTime(h, m, s) {
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(
-    s
-  ).padStart(2, "0")}`;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
 async function startPrayerCountdown(country, city) {
-  // 🧹 Clear any previous countdown before starting a new one
   if (countdownInterval) {
     clearInterval(countdownInterval);
     countdownInterval = null;
@@ -196,40 +195,39 @@ async function startPrayerCountdown(country, city) {
   countdownInterval = setInterval(update, 1000);
 }
 
-// ⚙️ Event handlers
-continentSelect.addEventListener("change", async () => {
-  localStorage.setItem("continent", continentSelect.value);
+// 🧭 Event bindings
+continentSelect.addEventListener('change', async () => {
+  localStorage.setItem('continent', continentSelect.value);
   await loadCountries(continentSelect.value);
-  localStorage.removeItem("country");
-  localStorage.removeItem("city");
+  localStorage.removeItem('country');
+  localStorage.removeItem('city');
 });
 
-countrySelect.addEventListener("change", async () => {
-  localStorage.setItem("country", countrySelect.value);
+countrySelect.addEventListener('change', async () => {
+  localStorage.setItem('country', countrySelect.value);
   await loadCities(countrySelect.value);
-  localStorage.removeItem("city");
+  localStorage.removeItem('city');
 });
 
-citySelect.addEventListener("change", () => {
-  localStorage.setItem("city", citySelect.value);
+citySelect.addEventListener('change', () => {
+  localStorage.setItem('city', citySelect.value);
   loadPrayerTimes();
   startPrayerCountdown(countrySelect.value, citySelect.value);
 });
 
-methodSelect.addEventListener("change", () => {
-  localStorage.setItem("method", methodSelect.value);
+methodSelect.addEventListener('change', () => {
+  localStorage.setItem('method', methodSelect.value);
   loadPrayerTimes();
   startPrayerCountdown(countrySelect.value, citySelect.value);
 });
 
-// 🔁 Reset button
-resetBtn.addEventListener("click", () => {
-  continentSelect.value = "";
+resetBtn.addEventListener('click', () => {
+  continentSelect.value = '';
   countrySelect.innerHTML = '<option value="">Select Country</option>';
   citySelect.innerHTML = '<option value="">Select City</option>';
-  methodSelect.value = "2";
-  prayerTableBody.innerHTML = "";
-  countdownDiv.textContent = "";
+  methodSelect.value = '2';
+  prayerTableBody.innerHTML = '';
+  countdownDiv.textContent = '';
 
   if (countdownInterval) {
     clearInterval(countdownInterval);
